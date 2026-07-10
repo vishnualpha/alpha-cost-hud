@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Alpha Cost HUD — Direction Mockups</title>
+<style>
+  :root {
+    --bg: #0e0d0b;
+    --gold: #e6b450;
+    --gold-bright: #f2c771;
+    --green: #3ddc84;
+    --red: #ff5c72;
+    --fg: #f2efe8;
+    --muted: #8b8778;
+    --border: rgba(230,180,80,.14);
+  }
+  * { box-sizing: border-box; margin: 0; font-variant-numeric: tabular-nums; }
+  body {
+    background: #1a1a1e;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--fg);
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+  h1 { font-size: 18px; font-weight: 600; opacity: .7; }
+  .switcher { display: flex; gap: 8px; }
+  .switcher button {
+    padding: 8px 16px; border: 1px solid var(--border); background: transparent;
+    color: var(--muted); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+  .switcher button.active { background: var(--gold); color: #0e0d0b; border-color: var(--gold); }
+  .stage { display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; text-align: center; }
+  .direction { display: block; margin-bottom: 8px; }
+  .dsep { width: 100%; max-width: 760px; border: none; border-top: 1px solid rgba(255,255,255,.08); margin: 12px 0; }
+
+  /* ---- shared widget shell ---- */
+  .widget {
+    background: linear-gradient(160deg, rgba(20,19,16,.94), rgba(14,13,11,.96));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    backdrop-filter: blur(24px);
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  .bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+  .logo { width: 15px; height: 15px; border-radius: 4px; background: linear-gradient(135deg,var(--gold-bright),var(--gold)); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .actions { display: flex; gap: 3px; color: var(--muted); font-size: 13px; }
+  .actions span { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; cursor: pointer; }
+  .actions span:hover { background: rgba(255,255,255,.08); }
+
+  /* =========== DIRECTION A: TICKER =========== */
+  .a-collapsed { width: 320px; }
+  .a-hero { padding: 6px 14px 14px; }
+  .a-amount { font-size: 40px; font-weight: 800; letter-spacing: -.03em;
+    background: linear-gradient(180deg,#fbe3a6,var(--gold) 55%,#cf9a34); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .a-amount .cents { font-size: 24px; opacity: .8; }
+  .a-sub { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .a-tokens { color: var(--gold-bright); font-weight: 600; }
+  .a-spark { height: 34px; margin: 8px 0 0; display: flex; align-items: flex-end; gap: 2px; }
+  .a-spark i { flex: 1; background: linear-gradient(180deg,var(--gold),rgba(230,180,80,.2)); border-radius: 2px 2px 0 0; display: block; }
+  .a-upsell { margin-top: 10px; padding: 7px 10px; border: 1px solid rgba(61,220,132,.22); background: rgba(61,220,132,.07);
+    border-radius: 9px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .a-upsell b { color: var(--green); }
+  .a-upsell .arrow { color: var(--gold-bright); font-weight: 600; }
+
+  /* =========== DIRECTION B: SCORECARD (game) =========== */
+  .b-collapsed { width: 320px; }
+  .b-top { display: flex; padding: 10px 14px 12px; gap: 14px; align-items: center; }
+  .b-ring { width: 68px; height: 68px; border-radius: 50%; flex: none; display: grid; place-items: center; position: relative;
+    background: conic-gradient(var(--green) 0turn .84turn, rgba(255,255,255,.08) .84turn 1turn); }
+  .b-ring::after { content:""; position: absolute; inset: 6px; border-radius: 50%; background: #12110e; }
+  .b-grade { position: relative; z-index: 1; font-size: 26px; font-weight: 800; color: var(--green); }
+  .b-right { flex: 1; }
+  .b-spend { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+  .b-spend .cents { font-size: 16px; opacity: .7; }
+  .b-tokens { font-size: 12px; color: var(--gold-bright); font-weight: 600; margin-top: 1px; }
+  .b-streak { font-size: 11px; color: var(--muted); margin-top: 4px; display: flex; align-items: center; gap: 5px; }
+  .b-fire { filter: saturate(1.4); }
+  .b-bar-track { height: 5px; background: rgba(255,255,255,.07); border-radius: 3px; margin: 0 14px; overflow: hidden; }
+  .b-bar-fill { height: 100%; width: 62%; background: linear-gradient(90deg,var(--green),var(--gold)); border-radius: 3px; }
+  .b-miss { margin: 10px 14px 14px; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(255,92,114,.2);
+    background: rgba(255,92,114,.06); font-size: 11px; cursor: pointer; }
+  .b-miss b { color: var(--red); }
+  .b-miss .grow { color: var(--muted); }
+
+  /* =========== DIRECTION C: PROVIDER STACK =========== */
+  .c-collapsed { width: 340px; }
+  .c-hero { padding: 8px 14px 10px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .c-amount { font-size: 34px; font-weight: 800; letter-spacing: -.02em; }
+  .c-amount .cents { font-size: 20px; opacity: .7; }
+  .c-toks { text-align: right; font-size: 11px; color: var(--muted); }
+  .c-toks b { display: block; font-size: 16px; color: var(--gold-bright); font-weight: 700; }
+  .c-providers { padding: 4px 14px 6px; display: flex; flex-direction: column; gap: 5px; }
+  .c-prov { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .c-prov .name { width: 74px; color: var(--fg); }
+  .c-prov .track { flex: 1; height: 6px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; }
+  .c-prov .fill { height: 100%; border-radius: 3px; }
+  .c-prov .val { width: 48px; text-align: right; color: var(--muted); }
+  .c-upsell { margin: 8px 14px 14px; padding: 9px 11px; border-radius: 10px;
+    border: 1px solid rgba(230,180,80,.25); background: linear-gradient(135deg,rgba(230,180,80,.12),rgba(230,180,80,.04));
+    display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .c-upsell .txt { font-size: 11px; }
+  .c-upsell .txt b { color: var(--gold-bright); font-size: 13px; }
+  .c-upsell .cta { font-size: 11px; font-weight: 700; color: #0e0d0b; background: var(--gold); padding: 4px 9px; border-radius: 6px; }
+
+  /* expanded panel shared */
+  .panel { width: 340px; border-radius: 16px; }
+  .psec { border-top: 1px solid var(--border); padding: 8px 14px; }
+  .phead { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--gold); font-weight: 700; display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .prow { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+  .prow .r { color: var(--muted); }
+  .note { font-size: 12px; color: var(--muted); max-width: 340px; text-align: center; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h1>Alpha Cost HUD — all three directions (scroll)</h1>
+
+  <!-- DIRECTION A -->
+  <div class="direction" id="dir-a">
+    <div class="stage">
+      <div>
+        <div class="label">Collapsed — money in motion</div>
+        <div class="widget a-collapsed">
+          <div class="bar"><span class="brand"><span class="dot"></span> Today · all providers</span>
+            <span class="actions"><span>▾</span><span>⚙</span><span>–</span></span></div>
+          <div class="a-hero">
+            <div class="a-amount" id="a-num">$47<span class="cents">.20</span></div>
+            <div class="a-sub"><span class="a-tokens" id="a-tok">2.41M tokens</span> · <span>6 providers</span></div>
+            <div class="a-spark" id="a-spark"></div>
+            <div class="a-upsell">
+              <span>Could save <b>$11.40/day</b> with Alpha routing</span>
+              <span class="arrow">→</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="note">The number physically ticks up as requests land. Sparkline of the last hour. Tokens are co-hero with spend. Alpha savings sits below as a soft, quantified nudge.</div>
+    </div>
+  </div>
+
+  <hr class="dsep">
+  <!-- DIRECTION B -->
+  <div class="direction" id="dir-b">
+    <div class="stage">
+      <div>
+        <div class="label">Collapsed — efficiency game</div>
+        <div class="widget b-collapsed">
+          <div class="bar"><span class="brand"><span class="dot"></span> Efficiency</span>
+            <span class="actions"><span>▾</span><span>⚙</span><span>–</span></span></div>
+          <div class="b-top">
+            <div class="b-ring"><span class="b-grade">A–</span></div>
+            <div class="b-right">
+              <div class="b-spend" id="b-num">$47<span class="cents">.20</span></div>
+              <div class="b-tokens" id="b-tok">2.41M tokens today</div>
+              <div class="b-streak"><span class="b-fire">🔥</span> 7-day under-budget streak</div>
+            </div>
+          </div>
+          <div class="b-bar-track"><div class="b-bar-fill"></div></div>
+          <div class="b-miss">
+            <b>$318 left on the table</b> this month <span class="grow">— growing $11/day →</span>
+          </div>
+        </div>
+      </div>
+      <div class="note">Credit-score-for-your-AI-spend. A grade + streak makes optimizing addictive. The "left on the table" counter is the loss-aversion hook that compounds — Alpha is how you fix it.</div>
+    </div>
+  </div>
+
+  <hr class="dsep">
+  <!-- DIRECTION C -->
+  <div class="direction" id="dir-c">
+    <div class="stage">
+      <div>
+        <div class="label">Collapsed — providers primary</div>
+        <div class="widget c-collapsed">
+          <div class="bar"><span class="brand"><span class="dot"></span> Today · all providers</span>
+            <span class="actions"><span>▾</span><span>⚙</span><span>–</span></span></div>
+          <div class="c-hero">
+            <div class="c-amount" id="c-num">$47<span class="cents">.20</span></div>
+            <div class="c-toks">tokens<b id="c-tok">2.41M</b></div>
+          </div>
+          <div class="c-providers">
+            <div class="c-prov"><span class="name">OpenAI</span><span class="track"><span class="fill" style="width:64%;background:#10a37f"></span></span><span class="val">$30.1</span></div>
+            <div class="c-prov"><span class="name">Anthropic</span><span class="track"><span class="fill" style="width:38%;background:#d0782f"></span></span><span class="val">$11.5</span></div>
+            <div class="c-prov"><span class="name">Gemini</span><span class="track"><span class="fill" style="width:14%;background:#4285f4"></span></span><span class="val">$3.8</span></div>
+            <div class="c-prov"><span class="name">Bedrock</span><span class="track"><span class="fill" style="width:7%;background:#ff9900"></span></span><span class="val">$1.8</span></div>
+          </div>
+          <div class="c-upsell">
+            <span class="txt">Alpha would cut this to <b>$35.80/day</b><br><span style="color:var(--muted)">→ $4,160/yr saved, compounding</span></span>
+            <span class="cta">Try Alpha</span>
+          </div>
+        </div>
+      </div>
+      <div class="note">Your real providers ARE the product — ranked bars, brand colors, at-a-glance. Alpha is a clean upsell card at the bottom with the annual-compounding number as the hook.</div>
+    </div>
+  </div>
+
+<script>
+  // live-ticking numbers (money in motion)
+  let base = 47.20, toks = 2.41;
+  function tick() {
+    base += Math.random()*0.06;
+    toks += Math.random()*0.004;
+    const d = Math.floor(base), c = Math.round((base-d)*100).toString().padStart(2,'0');
+    const money = `$${d}<span class="cents">.${c}</span>`;
+    ['a-num','b-num','c-num'].forEach(id => { const el=document.getElementById(id); if(el) el.innerHTML=money; });
+    const tk = toks.toFixed(2)+'M';
+    const a=document.getElementById('a-tok'); if(a) a.textContent=tk+' tokens';
+    const b=document.getElementById('b-tok'); if(b) b.textContent=tk+' tokens today';
+    const c=document.getElementById('c-tok'); if(c) c.textContent=tk;
+  }
+  setInterval(tick, 900);
+
+  // sparkline
+  const spark = document.getElementById('a-spark');
+  if (spark) for (let i=0;i<28;i++){ const bar=document.createElement('i'); bar.style.height=(20+Math.random()*80)+'%'; spark.appendChild(bar); }
+</script>
+</body>
+</html>

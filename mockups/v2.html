@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Alpha Cost HUD v2 — carousel</title>
+<style>
+  :root {
+    --bg:#0e0d0b; --gold:#e6b450; --gold-bright:#f2c771; --green:#3ddc84;
+    --red:#ff5c72; --fg:#f2efe8; --muted:#8b8778; --border:rgba(230,180,80,.14);
+  }
+  *{box-sizing:border-box;margin:0;font-variant-numeric:tabular-nums;}
+  body{background:#1b1b1f;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    color:var(--fg);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:40px;}
+  h1{font-size:16px;font-weight:600;opacity:.6;}
+  .hint{font-size:12px;color:var(--muted);max-width:400px;text-align:center;line-height:1.5;}
+
+  /* ---- bigger card ---- */
+  .widget{width:380px;height:auto;background:linear-gradient(160deg,rgba(22,21,17,.96),rgba(14,13,11,.98));
+    border:1px solid var(--border);border-radius:20px;backdrop-filter:blur(24px);overflow:hidden;
+    box-shadow:0 24px 70px rgba(0,0,0,.55);}
+  .bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px;}
+  .brand{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.03em;color:var(--muted);text-transform:uppercase;}
+  .logo{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,var(--gold-bright),var(--gold));
+    box-shadow:0 0 12px rgba(230,180,80,.4);}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .actions{display:flex;gap:4px;color:var(--muted);font-size:15px;}
+  .actions span{width:24px;height:24px;display:grid;place-items:center;border-radius:6px;cursor:pointer;}
+  .actions span:hover{background:rgba(255,255,255,.08);}
+
+  /* ---- carousel ---- */
+  .slides{position:relative;overflow:hidden;height:236px;}
+  .slide{padding:10px 16px 14px;animation:fade .4s ease;height:100%;
+    display:flex;flex-direction:column;justify-content:center;}
+  .slide.list{justify-content:flex-start;}
+  @keyframes fade{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+  .dots{display:flex;gap:6px;justify-content:center;padding:0 0 12px;}
+  .dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.18);cursor:pointer;transition:.2s;}
+  .dots i.on{background:var(--gold);width:18px;border-radius:3px;}
+
+  /* hero (B+C) */
+  .top{display:flex;align-items:center;gap:16px;}
+  .ring{width:84px;height:84px;border-radius:50%;flex:none;display:grid;place-items:center;position:relative;
+    background:conic-gradient(var(--green) 0 .84turn,rgba(255,255,255,.08) .84turn 1turn);}
+  .ring::after{content:"";position:absolute;inset:7px;border-radius:50%;background:#12110e;}
+  .grade{position:relative;z-index:1;font-size:30px;font-weight:800;color:var(--green);}
+  .ring .glabel{position:absolute;bottom:-2px;z-index:1;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+  .money{font-size:46px;font-weight:800;letter-spacing:-.03em;line-height:1;
+    background:linear-gradient(180deg,#fbe3a6,var(--gold) 55%,#cf9a34);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .money .c{font-size:26px;opacity:.8;}
+  .toks{font-size:14px;color:var(--gold-bright);font-weight:700;margin-top:3px;}
+  .toks span{color:var(--muted);font-weight:500;}
+  .streak{font-size:12px;color:var(--muted);margin-top:5px;display:flex;align-items:center;gap:5px;}
+  .spark{height:38px;margin:12px 0 0;display:flex;align-items:flex-end;gap:2px;}
+  .spark i{flex:1;background:linear-gradient(180deg,var(--gold),rgba(230,180,80,.15));border-radius:2px 2px 0 0;}
+
+  .stitle{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--gold);font-weight:700;margin:2px 0 12px;
+    display:flex;justify-content:space-between;align-items:center;}
+  .stitle .sub{color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none;}
+
+  /* rows w/ bigger icons */
+  .row{display:flex;align-items:center;gap:11px;padding:8px 0;}
+  .ico{width:30px;height:30px;border-radius:9px;flex:none;display:grid;place-items:center;font-size:15px;font-weight:800;color:#fff;}
+  .rname{flex:1;font-size:13px;font-weight:600;}
+  .rname small{display:block;font-size:10px;color:var(--muted);font-weight:400;}
+  .track{flex:1;height:7px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;max-width:90px;}
+  .fill{height:100%;border-radius:4px;}
+  .rval{width:56px;text-align:right;font-size:13px;font-weight:700;}
+  .rval small{display:block;font-size:9px;color:var(--muted);font-weight:500;}
+
+  /* local agent live pill */
+  .live-pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--green);
+    background:rgba(61,220,132,.1);padding:2px 7px;border-radius:20px;font-weight:600;}
+
+  /* savings/compounding */
+  .save-hero{text-align:center;padding:6px 0 4px;}
+  .save-big{font-size:40px;font-weight:800;color:var(--green);letter-spacing:-.02em;}
+  .save-cap{font-size:12px;color:var(--muted);margin-top:2px;}
+  .proj{display:flex;gap:8px;margin:14px 0 8px;}
+  .proj div{flex:1;text-align:center;padding:9px 6px;border:1px solid var(--border);border-radius:10px;}
+  .proj b{display:block;font-size:17px;color:var(--gold-bright);font-weight:800;}
+  .proj small{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+  .cta{margin-top:6px;padding:11px;border-radius:11px;text-align:center;font-size:13px;font-weight:700;
+    background:linear-gradient(135deg,var(--gold-bright),var(--gold));color:#0e0d0b;cursor:pointer;
+    box-shadow:0 6px 20px rgba(230,180,80,.25);}
+  .projnote{font-size:9px;color:var(--muted);text-align:center;margin-top:6px;opacity:.7;}
+
+  /* persistent alpha reference on every slide */
+  .alpha-foot{margin:0 16px 10px;padding:7px 11px;border-radius:10px;cursor:pointer;
+    align-items:center;gap:8px;font-size:11px;min-height:34px;
+    background:rgba(230,180,80,.06);border:1px solid rgba(230,180,80,.16);
+    transition:.18s;}
+  .alpha-foot:hover{background:rgba(230,180,80,.13);border-color:rgba(230,180,80,.28);}
+  .alpha-foot .amark{width:16px;height:16px;border-radius:5px;flex:none;
+    background:linear-gradient(135deg,var(--gold-bright),var(--gold));box-shadow:0 0 8px rgba(230,180,80,.4);}
+  .alpha-foot .atxt{flex:1;color:var(--fg);}
+  .alpha-foot .atxt b{color:var(--green);}
+  .alpha-foot .aarrow{color:var(--gold-bright);font-weight:700;}
+</style>
+</head>
+<body>
+  <h1>Alpha Cost HUD v2 — B+C combo · carousel · bigger</h1>
+
+  <div class="widget">
+    <div class="bar">
+      <span class="brand"><span class="logo"></span><span class="dot"></span> <span id="slidename">Today</span></span>
+      <span class="actions"><span onclick="prev()">‹</span><span onclick="next()">›</span><span>⚙</span><span>–</span></span>
+    </div>
+    <div class="slides"><div class="slide" id="slide"></div></div>
+    <div class="alpha-foot" id="afoot" onclick="window.open('https://thealpha.ai','_blank')"></div>
+    <div class="dots" id="dots"></div>
+  </div>
+
+  <p class="hint">Auto-advances every 4s · click ‹ › or dots to navigate. Numbers tick live. Local-agent numbers below are YOUR real Claude Code data.</p>
+
+<script>
+// live counters
+let spend=47.20, tokens=2.41;
+function money(v){const d=Math.floor(v),c=Math.round((v-d)*100).toString().padStart(2,'0');return `$${d}<span class="c">.${c}</span>`;}
+function tk(v){return v.toFixed(2)+'M';}
+
+const SLIDES = [
+  { name:'Today · all sources', alpha:'Cut this bill <b>24%</b> — same models, smarter routing', render:()=>`
+    <div class="top">
+      <div class="ring"><span class="grade">A–</span><span class="glabel">score</span></div>
+      <div>
+        <div class="money">${money(spend)}</div>
+        <div class="toks">${tk(tokens)} tokens <span>today</span></div>
+        <div class="streak">🔥 7-day under-budget streak</div>
+      </div>
+    </div>
+    <div class="spark">${Array.from({length:32},()=>`<i style="height:${20+Math.random()*80}%"></i>`).join('')}</div>` },
+
+  { name:'By provider', list:true, alpha:'One key for all providers — <b>no per-provider setup</b>', render:()=>`
+    <div class="stitle">Providers <span class="sub">spend · today</span></div>
+    ${provRow('OpenAI','#10a37f','GPT',64,'$30.1','1.2M')}
+    ${provRow('Anthropic','#d0782f','A',38,'$11.5','680K')}
+    ${provRow('Gemini','#4285f4','G',14,'$3.8','340K')}
+    ${provRow('Bedrock','#ff9900','B',7,'$1.8','98K')}
+    ${provRow('Mistral','#f54e42','M',4,'$0.9','40K')}` },
+
+  { name:'Top models', list:true, alpha:'Auto-swap to a <b>cheaper model</b> at equal quality', render:()=>`
+    <div class="stitle">Top models <span class="sub">by cost · today</span></div>
+    ${provRow('gpt-4o','#10a37f','◆',70,'$24.2','openai')}
+    ${provRow('claude-sonnet-4-6','#d0782f','◆',44,'$14.1','anthropic')}
+    ${provRow('gpt-4o-mini','#10a37f','◆',20,'$6.1','openai')}
+    ${provRow('gemini-2.5-flash','#4285f4','◆',12,'$3.8','google')}
+    ${provRow('claude-haiku-4-5','#d0782f','◆',8,'$2.4','anthropic')}` },
+
+  { name:'Local agents', list:true, alpha:'Spend caps &amp; alerts so coding agents <b>never overrun</b>', render:()=>`
+    <div class="stitle">Local coding agents <span class="live-pill">● LIVE</span></div>
+    <div class="row">
+      <div class="ico" style="background:linear-gradient(135deg,#f2c771,#e6b450);color:#0e0d0b">CC</div>
+      <div class="rname">Claude Code<small>opus-4-8 · reading ~/.claude</small></div>
+      <div class="rval">$3,938<small>2.20B tok</small></div>
+    </div>
+    <div class="row">
+      <div class="ico" style="background:linear-gradient(135deg,#10a37f,#0d8a6a)">CX</div>
+      <div class="rname">Codex<small>~/.codex · sqlite</small></div>
+      <div class="rval">$412<small>88M tok</small></div>
+    </div>
+    <div class="projnote">Real token+cost data read locally — zero setup, no API key.</div>` },
+
+  { name:'Savings with Alpha', render:()=>`
+    <div class="save-hero">
+      <div class="save-big">$11.40<span style="font-size:20px;opacity:.7">/day</span></div>
+      <div class="save-cap">you could save with thealpha.ai routing</div>
+    </div>
+    <div class="proj">
+      <div><b>$342</b><small>/month</small></div>
+      <div><b>$4,160</b><small>/year</small></div>
+      <div><b>$12.1K</b><small>3-yr compounded</small></div>
+    </div>
+    <div class="cta" onclick="window.open('https://thealpha.ai','_blank')">Try thealpha.ai →</div>
+    <div class="projnote">Projected from your real daily spend · illustrative</div>` },
+];
+
+function provRow(name,color,icon,pct,val,sub){
+  return `<div class="row">
+    <div class="ico" style="background:${color}">${icon}</div>
+    <div class="rname">${name}<small>${sub}</small></div>
+    <div class="track"><div class="fill" style="width:${pct}%;background:${color}"></div></div>
+    <div class="rval">${val}</div>
+  </div>`;
+}
+
+let idx=0;
+function draw(){
+  const s = document.getElementById('slide');
+  s.className = 'slide' + (SLIDES[idx].list ? ' list' : '');
+  s.innerHTML = SLIDES[idx].render();
+  document.getElementById('slidename').textContent = SLIDES[idx].name;
+  // Persistent Alpha reference on every slide (except the savings slide, which
+  // IS about Alpha). Keep the footer's space reserved either way so the card
+  // height never changes between slides.
+  const foot = document.getElementById('afoot');
+  foot.style.display = 'flex';
+  if (SLIDES[idx].alpha) {
+    foot.style.visibility = 'visible';
+    foot.innerHTML = `<span class="amark"></span><span class="atxt">${SLIDES[idx].alpha}</span><span class="aarrow">thealpha.ai ↗</span>`;
+  } else {
+    foot.style.visibility = 'hidden';
+  }
+  document.getElementById('dots').innerHTML = SLIDES.map((_,i)=>`<i class="${i===idx?'on':''}" onclick="go(${i})"></i>`).join('');
+}
+function go(i){idx=(i+SLIDES.length)%SLIDES.length;draw();}
+function next(){go(idx+1);} function prev(){go(idx-1);}
+window.go=go;window.next=next;window.prev=prev;
+
+setInterval(()=>{spend+=Math.random()*0.05;tokens+=Math.random()*0.003;if(idx===0)draw();},900);
+setInterval(()=>next(),7000);
+draw();
+</script>
+</body>
+</html>
