@@ -62,7 +62,7 @@
     background:rgba(61,220,132,.1);padding:2px 7px;border-radius:20px;font-weight:600;}
 
   /* savings/compounding */
-  .save-hero{text-align:center;padding:6px 0 4px;}
+  .save-hero{text-align:center;padding:20px 0 4px;}
   .save-big{font-size:40px;font-weight:800;color:var(--green);letter-spacing:-.02em;}
   .save-cap{font-size:12px;color:var(--muted);margin-top:2px;}
   .proj{display:flex;gap:8px;margin:14px 0 8px;}
