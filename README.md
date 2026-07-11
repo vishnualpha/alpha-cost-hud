@@ -51,10 +51,19 @@ This is open source specifically so you can verify all of the above.
 
 ## Install
 
-Download the latest `.dmg` from
-[Releases](https://github.com/vishnualpha/alpha-cost-hud/releases), drag the app
-to Applications, and open it. The build is currently unsigned, so the first
-launch needs **right-click → Open** to get past Gatekeeper.
+Grab the installer for your platform from
+[Releases](https://github.com/vishnualpha/alpha-cost-hud/releases/latest):
+
+| Platform | File | First-launch note |
+|---|---|---|
+| **macOS** (Apple Silicon + Intel) | `.dmg` | Drag to Applications, then **right-click → Open** |
+| **Windows** | `.msi` or `.exe` | On the SmartScreen prompt: **More info → Run anyway** |
+| **Linux** | `.AppImage` or `.deb` | AppImage: `chmod +x` then run; or `sudo dpkg -i` the `.deb` |
+
+**These are unsigned builds** — this is an open-source tool, so we don't ship
+code-signing certificates. Your OS will warn about an "unidentified developer";
+the steps above get past it. If you'd rather not trust a binary, the source is
+right here — [build it yourself](#build-from-source).
 
 ## Build from source
 
