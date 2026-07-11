@@ -1,0 +1,81 @@
+name: Release
+
+# Build installers for macOS (universal), Windows, and Linux, and attach them
+# to a GitHub Release. Triggers when you push a version tag (e.g. v0.1.1).
+# GitHub provides the macOS/Windows/Linux runners — you don't need those machines.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+permissions:
+  contents: write # needed to create the release + upload assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS — universal (Apple Silicon + Intel in one .dmg)
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+          # Linux — .AppImage + .deb
+          - platform: ubuntu-22.04
+            args: ""
+          # Windows — .msi + .exe (NSIS)
+          - platform: windows-latest
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # macOS needs both arch targets for a universal build
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      # Linux system deps for Tauri (webkit2gtk, etc.)
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build + release (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Alpha Cost HUD ${{ github.ref_name }}"
+          releaseBody: |
+            Cross-platform desktop LLM cost HUD.
+
+            **Downloads:**
+            - macOS (universal, Apple Silicon + Intel): `.dmg`
+            - Windows: `.msi` or `.exe`
+            - Linux: `.AppImage` or `.deb`
+
+            Unsigned builds — macOS: right-click → Open the first time.
+          releaseDraft: true # publish manually after checking the artifacts
+          prerelease: false
+          args: ${{ matrix.args }}
