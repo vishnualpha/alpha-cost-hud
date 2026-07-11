@@ -59,15 +59,12 @@ export function App() {
   // to sample ONLY for the visual slides that would otherwise look empty
   // (providers, model breakdown) — but NEVER fake the fleet/savings, since those
   // gate the "Alpha connected" experience (real fleet slide + realized savings).
+  // Demo mode → all mock data. Otherwise → REAL data only, with honest empty
+  // states (no fake sample data leaking into a real session).
   const demo = settings?.demoMode ?? false;
-  const poll = demo
-    ? { ...MOCK_POLL, lastUpdated: Date.now() }
-    : realPoll.breakdown && realPoll.breakdown.length > 0
-      ? realPoll
-      : { ...realPoll, breakdown: MOCK_POLL.breakdown }; // fleet stays real (null if not connected)
-  const providers =
-    demo || realProviders.results.length > 0 ? (demo ? MOCK_PROVIDERS : realProviders.results) : MOCK_PROVIDERS;
-  const local = demo ? MOCK_LOCAL : (realLocal.data?.agents.some((a) => a.available) ? realLocal.data : MOCK_LOCAL);
+  const poll = demo ? { ...MOCK_POLL, lastUpdated: Date.now() } : realPoll;
+  const providers = demo ? MOCK_PROVIDERS : realProviders.results;
+  const local = demo ? MOCK_LOCAL : realLocal.data;
 
   const handleSave = useCallback(
     async (next: Settings, nextKey: string) => {

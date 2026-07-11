@@ -68,9 +68,14 @@ export function ProvidersScreen({ onClose }: ProvidersScreenProps) {
 
       <div className="config-body">
         <p className="providers-intro">
-          Connect providers directly with an API key to see spend Alpha isn&apos;t
-          routing yet. Keys are stored in your OS keychain and never leave your
-          device.
+          Track spend directly from a provider. Keys stay in your OS keychain and
+          never leave your device.
+        </p>
+        <p className="providers-note">
+          Most providers only expose spend to an <b>admin/org key</b> — a normal
+          key can make calls but can&apos;t read past cost. For full, reliable cost
+          tracking, use your <b>local agents</b> (Claude Code / Codex, read from
+          disk) or route traffic through <b>Alpha</b>.
         </p>
 
         {CONNECTOR_LIST.map((c) => (

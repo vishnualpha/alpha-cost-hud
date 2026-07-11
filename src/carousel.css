@@ -133,3 +133,12 @@
 .adv { font-size:11px; color:var(--muted); }
 .adv summary { cursor:pointer; color:var(--muted); font-weight:600; padding:2px 0; }
 .adv label { margin-top:6px; }
+
+.providers-note { font-size:10px; color:var(--muted); line-height:1.45; background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
+.providers-note b { color:var(--fg); }
+
+/* time-range toggle */
+.range { display:flex; gap:4px; justify-content:center; padding:2px 16px 4px; }
+.range button { flex:1; max-width:90px; font-size:11px; font-weight:600; padding:4px 0; border:none; border-radius:7px; background:rgba(255,255,255,.05); color:var(--muted); cursor:pointer; transition:.15s; }
+.range button:hover { background:rgba(255,255,255,.1); color:var(--fg); }
+.range button.on { background:var(--gold); color:#0e0d0b; }

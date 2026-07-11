@@ -4,7 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import type { PollState } from "../usePolling";
 import type { ProviderResult } from "../providers/types";
-import type { LocalAgents, PlanMode } from "../localAgents";
+import type { LocalAgents, PlanMode, TimeRange } from "../localAgents";
+import { agentWindow, RANGE_LABEL } from "../localAgents";
 import { useCountUp } from "../useCountUp";
 import alphaLogo from "../assets/alpha-logo.png";
 import "../carousel.css";
@@ -112,29 +113,31 @@ function buildSlides(
   local: LocalAgents | null,
   planMode: PlanMode,
   gatewayUrl: string,
-  heroSpend?: number,
-  heroTok?: number,
+  range: TimeRange,
 ): Slide[] {
-  // ----- derived numbers -----
+  const rangeLabel = RANGE_LABEL[range]; // "today" | "this week" | "this month"
+  // ----- derived numbers (windowed) -----
   const providerSpend = providers.filter((p) => p.ok && p.spendToday != null).reduce((s, p) => s + (p.spendToday ?? 0), 0);
   const gatewaySpend = poll.fleet?.totals.spend ?? 0;
-  const localCost = (local?.agents ?? []).reduce((s, a) => s + a.today_cost, 0);
-  const localTokRaw = (local?.agents ?? []).reduce((s, a) => s + a.today_tokens, 0);
+  const localWin = (local?.agents ?? []).map((a) => agentWindow(a, range));
+  const localCost = localWin.reduce((s, w) => s + w.cost, 0);
+  const localTokRaw = localWin.reduce((s, w) => s + w.tokens, 0);
   const spendRaw = providerSpend + gatewaySpend + localCost;
-  // Hero uses animated (count-up) values when provided.
-  const spend = heroSpend ?? spendRaw;
-  const localTok = heroTok ?? localTokRaw;
+  // The hero HTML uses STABLE values (not the animated count-up) so cur.html
+  // doesn't change every frame — the patch effect handles live animation. But
+  // savings/other slides need the real total, so `spend` = stable total here.
+  const spend = spendRaw;
 
-  // 1) TODAY
+  // 1) HERO — money/toks seeded stable; count-up effect patches them live.
   const today: Slide = {
-    name: "Today · all sources",
+    name: `${range === "today" ? "Today" : range === "week" ? "This week" : "This month"} · all sources`,
     alpha: "Cut this bill <b>24%</b> — same models, smarter routing",
     html: `
     <div class="top">
       <div class="ring"><span class="grade">A–</span></div>
       <div>
-        <div class="money">${money(spend)}</div>
-        <div class="toks">${tk(localTok)} tokens <span>today</span></div>
+        <div class="money">${money(spendRaw)}</div>
+        <div class="toks">${tk(localTokRaw)} tokens <span>${rangeLabel}</span></div>
         <div class="streak">🔥 7-day under-budget streak</div>
       </div>
     </div>
@@ -154,25 +157,55 @@ function buildSlides(
   const pMax = Math.max(...provs.map((p) => p.val), 1);
   const providersHtml =
     provs.length === 0
-      ? `<div class="stitle">Providers <span class="sub">spend · today</span></div><div style="font-size:11px;color:var(--muted);padding:6px 0">No providers connected — add one in settings</div>`
-      : `<div class="stitle">Providers <span class="sub">spend · today</span></div>` +
+      ? `<div class="stitle">Providers <span class="sub">spend · ${rangeLabel}</span></div><div style="font-size:11px;color:var(--muted);padding:6px 0">No providers connected — add one in settings</div>`
+      : `<div class="stitle">Providers <span class="sub">spend · ${rangeLabel}</span></div>` +
         provs
           .slice(0, 5)
           .map((p) => {
             const b = brand(p.id);
-            const val = p.credit ? `$${Math.round(p.val)} left` : money(p.val).replace(/<[^>]+>/g, "");
-            return provRow(p.label, b.color, b.icon, (p.val / pMax) * 100, val, p.credit ? "credit balance" : "today");
+            // Tiny-but-real spend (e.g. $0.007) must not read as "$0" — show
+            // "<$0.01" so it's clear the provider IS connected, just low.
+            const val = p.credit
+              ? `$${Math.round(p.val)} left`
+              : p.val > 0 && p.val < 0.01
+                ? "&lt;$0.01"
+                : money(p.val).replace(/<[^>]+>/g, "");
+            return provRow(p.label, b.color, b.icon, (p.val / pMax) * 100, val, p.credit ? "credit balance" : `${rangeLabel}`);
           })
           .join("");
 
-  // 3) TOP MODELS
-  const models = (poll.breakdown ?? []).slice().sort((a, b) => b.cost - a.cost).slice(0, 5);
+  // 3) TOP MODELS — aggregated across ALL sources: local coding agents
+  // (Claude Code/Codex by_model), the Alpha gateway breakdown, and any provider
+  // per-model data. Merged by model name so the same model from two sources sums.
+  const modelMap = new Map<string, { model: string; cost: number; source: string }>();
+  const addModel = (model: string, cost: number, source: string) => {
+    if (!model || cost <= 0) return;
+    const key = model.toLowerCase();
+    const cur = modelMap.get(key);
+    if (cur) cur.cost += cost;
+    else modelMap.set(key, { model, cost, source });
+  };
+  // local agents (their by_model is lifetime; use it as-is)
+  for (const a of local?.agents ?? []) {
+    for (const m of a.by_model ?? []) addModel(m.model, m.cost, a.agent === "codex" ? "codex" : "claude-code");
+  }
+  // gateway breakdown (windowed)
+  for (const b of poll.breakdown ?? []) addModel(b.model, b.cost, b.provider);
+
+  const models = [...modelMap.values()].sort((x, y) => y.cost - x.cost).slice(0, 5);
   const mMax = Math.max(...models.map((m) => m.cost), 1);
+  const srcColor = (s: string) =>
+    s === "claude-code" || s === "anthropic" ? "#d0782f" : s === "codex" || s === "openai" ? "#10a37f" : brand(s).color;
   const modelsHtml =
     models.length === 0
-      ? `<div class="stitle">Top models <span class="sub">by cost · today</span></div><div style="font-size:11px;color:var(--muted);padding:6px 0">No model spend today</div>`
-      : `<div class="stitle">Top models <span class="sub">by cost · today</span></div>` +
-        models.map((m) => provRow(m.model, brand(m.provider).color, "◆", (m.cost / mMax) * 100, `$${m.cost.toFixed(1)}`, m.provider)).join("");
+      ? `<div class="stitle">Top models <span class="sub">by cost</span></div><div style="font-size:11px;color:var(--muted);padding:6px 0">No model usage found yet</div>`
+      : `<div class="stitle">Top models <span class="sub">across all sources</span></div>` +
+        models
+          .map((m) => {
+            const val = m.cost < 0.01 ? "&lt;$0.01" : `$${m.cost >= 100 ? Math.round(m.cost) : m.cost.toFixed(2)}`;
+            return provRow(m.model, srcColor(m.source), "◆", (m.cost / mMax) * 100, val, m.source);
+          })
+          .join("");
 
   // 4) LOCAL AGENTS
   const agents = (local?.agents ?? []).filter((a) => a.available);
@@ -188,8 +221,9 @@ function buildSlides(
               ? `<div class="ico" style="background:linear-gradient(135deg,#f2c771,#e6b450);color:#0e0d0b">CC</div>`
               : `<div class="ico" style="background:linear-gradient(135deg,#10a37f,#0d8a6a)">CX</div>`;
             const name = isCC ? "Claude Code" : "Codex";
-            const sub = a.by_model[0]?.model ? `${a.by_model[0].model} · ${tk(a.total_tokens)} tok` : `${tk(a.total_tokens)} tok`;
-            const dollars = money(a.total_cost).replace(/<[^>]+>/g, "");
+            const w = agentWindow(a, range);
+            const sub = a.by_model[0]?.model ? `${a.by_model[0].model} · ${tk(w.tokens)} tok` : `${tk(w.tokens)} tok`;
+            const dollars = money(w.cost).replace(/<[^>]+>/g, "");
             return `<div class="row">${ico}<div class="rname">${name}<small>${sub}</small></div><div class="rval">${dollars}<small>${kind}</small></div></div>`;
           })
           .join("") +
@@ -223,7 +257,14 @@ function buildSlides(
     <div class="cta" id="tryalpha">Open your dashboard →</div>
     <div class="projnote">Realized savings · cost-per-success vs. baseline</div>`;
   } else {
-    const daily = spend * 0.24;
+    // Projection must be based on a stable DAILY spend, independent of the
+    // selected view range — else switching to Week/Month would multiply a
+    // weekly/monthly total by 365 and blow up. Derive a daily figure:
+    //   today  -> spend as-is
+    //   week   -> spend / 7
+    //   month  -> spend / 30
+    const dailySpend = spend / (range === "week" ? 7 : range === "month" ? 30 : 1);
+    const daily = dailySpend * 0.24;
     const yr = daily * 365;
     savingsHtml = `
     <div class="save-hero">
@@ -291,15 +332,16 @@ function buildSlides(
 export function Carousel({ poll, providers, local, planMode, demo, gatewayUrl, onOpenConfig, onOpenProviders, onHide }: CarouselProps) {
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [range, setRange] = useState<TimeRange>("today");
   const slideRef = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setInterval>>();
 
-  // Hero targets, animated with a count-up so the numbers tick when data changes.
+  // Hero targets (windowed), animated with a count-up so numbers tick on change.
   const spendTarget =
     providers.filter((p) => p.ok && p.spendToday != null).reduce((s, p) => s + (p.spendToday ?? 0), 0) +
     (poll.fleet?.totals.spend ?? 0) +
-    (local?.agents ?? []).reduce((s, a) => s + a.today_cost, 0);
-  const tokTarget = (local?.agents ?? []).reduce((s, a) => s + a.today_tokens, 0);
+    (local?.agents ?? []).reduce((s, a) => s + agentWindow(a, range).cost, 0);
+  const tokTarget = (local?.agents ?? []).reduce((s, a) => s + agentWindow(a, range).tokens, 0);
   const spendAnim = useCountUp(spendTarget);
   const tokAnim = useCountUp(tokTarget);
 
@@ -309,13 +351,16 @@ export function Carousel({ poll, providers, local, planMode, demo, gatewayUrl, o
   const alphaTarget = connected ? dashboardUrl(gatewayUrl) : MARKETING_URL;
   const footLabel = connected ? "your dashboard ↗" : "thealpha.ai ↗";
 
-  const slides = buildSlides(poll, providers, local, planMode, gatewayUrl, spendAnim, tokAnim);
+  const slides = buildSlides(poll, providers, local, planMode, gatewayUrl, range);
   const n = slides.length;
   const i = Math.min(idx, n - 1);
   const cur = slides[i];
 
   // Rebuild slide HTML only when the slide CHANGES (index or list layout) — not
   // on every count-up frame — so the sparkline animation plays once, not 60×/s.
+  // Rebuild slide HTML when the slide changes OR its content changes (range
+  // switch, new data) — but NOT on every count-up frame (that's patched below),
+  // so the sparkline animation still plays once. cur.html captures range+data.
   useEffect(() => {
     const el = slideRef.current;
     if (!el) return;
@@ -323,10 +368,9 @@ export function Carousel({ poll, providers, local, planMode, demo, gatewayUrl, o
     el.innerHTML = cur.html;
     const cta = el.querySelector("#tryalpha");
     if (cta) cta.addEventListener("click", () => openUrl(alphaTarget).catch(() => {}));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [i]);
+  }, [i, cur.html, cur.list, alphaTarget]);
 
-  // During count-up, patch ONLY the hero money/tokens text nodes (Today slide),
+  // During count-up, patch ONLY the hero money/tokens text nodes (hero slide),
   // leaving the sparkline and everything else untouched.
   useEffect(() => {
     if (i !== 0) return;
@@ -335,8 +379,8 @@ export function Carousel({ poll, providers, local, planMode, demo, gatewayUrl, o
     const moneyEl = el.querySelector(".money");
     const toksEl = el.querySelector(".toks");
     if (moneyEl) moneyEl.innerHTML = money(spendAnim);
-    if (toksEl) toksEl.innerHTML = `${tk(tokAnim)} tokens <span>today</span>`;
-  }, [i, spendAnim, tokAnim]);
+    if (toksEl) toksEl.innerHTML = `${tk(tokAnim)} tokens <span>${RANGE_LABEL[range]}</span>`;
+  }, [i, spendAnim, tokAnim, range]);
 
   useEffect(() => {
     if (paused) return;
@@ -367,6 +411,14 @@ export function Carousel({ poll, providers, local, planMode, demo, gatewayUrl, o
           <span onClick={onHide} onMouseDown={stop}>–</span>
           <span onClick={() => invoke("quit_app")} onMouseDown={stop}>×</span>
         </span>
+      </div>
+
+      <div className="range" onMouseDown={stop}>
+        {(["today", "week", "month"] as TimeRange[]).map((r) => (
+          <button key={r} className={range === r ? "on" : ""} onClick={() => setRange(r)}>
+            {r === "today" ? "Today" : r === "week" ? "Week" : "Month"}
+          </button>
+        ))}
       </div>
 
       <div className="slides">

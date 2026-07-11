@@ -72,8 +72,12 @@ const openai: ProviderConnector = {
   keyHint: "Admin key — sk-admin-…",
   keyUrl: "https://platform.openai.com/settings/organization/admin-keys",
   async fetchUsage(apiKey, signal) {
-    const start = startOfTodayUnix();
-    const url = `https://api.openai.com/v1/organization/costs?start_time=${start}&bucket_width=1d&limit=1`;
+    // OpenAI buckets are UTC-day aligned. Start from 00:00 UTC of the current
+    // day and request a few buckets so we capture the whole day regardless of
+    // the user's timezone offset. amount.value comes back as a STRING.
+    const now = new Date();
+    const utcMidnight = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 1000);
+    const url = `https://api.openai.com/v1/organization/costs?start_time=${utcMidnight}&bucket_width=1d&limit=2`;
     const res = await safe(() =>
       fetch(url, { headers: { Authorization: `Bearer ${apiKey}` }, signal }),
     );
@@ -83,7 +87,7 @@ const openai: ProviderConnector = {
     if (!res.ok) return fail("openai", `HTTP ${res.status}`);
 
     const body = (await res.json()) as {
-      data?: Array<{ results?: Array<{ amount?: { value?: number } }> }>;
+      data?: Array<{ results?: Array<{ amount?: { value?: string | number } }> }>;
     };
     let spend = 0;
     for (const bucket of body.data ?? []) {
@@ -100,7 +104,7 @@ const openai: ProviderConnector = {
 const openrouter: ProviderConnector = {
   id: "openrouter",
   label: "OpenRouter",
-  keyHint: "API key — sk-or-…",
+  keyHint: "Any API key — sk-or-… (works without admin)",
   keyUrl: "https://openrouter.ai/keys",
   async fetchUsage(apiKey, signal) {
     const res = await safe(() =>
