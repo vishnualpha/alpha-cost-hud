@@ -35,9 +35,9 @@ export function App() {
       setApiKey(k);
       const cfg = toGatewayConfig(s, k);
       setConfig(cfg);
-      // No usable config yet -> land on the config screen (unless demo mode,
-      // which needs no gateway at all).
-      if (!cfg && !s.demoMode) setShowConfig(true);
+      // Always land on the HUD. It works with zero setup (reads local Claude
+      // Code / Codex usage from disk), so a new user sees their real data
+      // immediately. Connecting Alpha / providers is opt-in via the ⚙ gear.
       // IMPORTANT: never restore click-through on boot. If it were on, the whole
       // window would ignore mouse events and you couldn't click the toggle to
       // turn it back off — a lockout with no recovery. Always start interactive;
