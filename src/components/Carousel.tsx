@@ -208,8 +208,8 @@ function buildSlides(
     const yr = realized * 12;
     const cap =
       realized > 0
-        ? "Alpha has saved you this — from your real traffic"
-        : "Alpha is active on your fleet — savings grow as traffic routes through it";
+        ? "Saved from your traces — and the corpus keeps compounding"
+        : "Alpha is capturing your traces — savings grow as they build";
     savingsHtml = `
     <div class="save-hero">
       <div class="save-big">${f(realized)}<span style="font-size:20px;opacity:.7">/mo</span></div>
@@ -228,14 +228,14 @@ function buildSlides(
     savingsHtml = `
     <div class="save-hero">
       <div class="save-big">${f(daily)}<span style="font-size:20px;opacity:.7">/day</span></div>
-      <div class="save-cap">you could save with smarter routing</div>
+      <div class="save-cap">what your traces would save — and that's just the start</div>
     </div>
     <div class="proj">
       <div><b>${f(daily * 30)}</b><small>/month</small></div>
       <div><b>${f(yr)}</b><small>/year</small></div>
       <div><b>${f(yr * 3 * 1.15)}</b><small>3-yr compounded</small></div>
     </div>
-    <div class="cta" id="tryalpha">Try thealpha.ai →</div>
+    <div class="cta" id="tryalpha">Start compounding with thealpha.ai →</div>
     <div class="projnote">Projected from your real daily spend · illustrative</div>`;
   }
 
@@ -256,22 +256,24 @@ function buildSlides(
               return provRow(w.name, "#e6b450", w.name.slice(0, 2).toUpperCase(), (w.windowSpend / wlMax) * 100, `${dot}$${w.windowSpend.toFixed(2)}`, `${w.requests} req`);
             })
             .join("");
-    fleetSlide = { name: "Alpha fleet", list: true, alpha: "Set budgets &amp; get anomaly alerts per agent", html: fleetHtml };
+    fleetSlide = { name: "Alpha fleet", list: true, alpha: "Every agent&apos;s traces captured — <b>evals, budgets, alerts</b>", html: fleetHtml };
   }
 
-  // Footer messages: sell Alpha when NOT connected; reflect active use when connected.
+  // Footer messages. Asset-first: Alpha turns every request into a trace you
+  // OWN — the dataset that makes agents better; cost savings ride along as proof
+  // it's working. Connected = active/possessive framing; not = the pitch.
   const msg = connected
     ? {
-        today: "Alpha is <b>routing this traffic</b> — savings applied",
-        providers: "All providers running through <b>one Alpha key</b>",
-        models: "Alpha is <b>auto-routing</b> to cheaper models",
-        local: "Route local agents through Alpha for <b>even cheaper</b>",
+        today: "Every call is now a <b>trace you own</b> — cost down 24% too",
+        providers: "One key capturing <b>every provider call</b> as trace data",
+        models: "Your calls become <b>eval data</b> — routing keeps improving",
+        local: "Coding-agent traces captured — <b>fuel to fine-tune & replay</b>",
       }
     : {
-        today: "Cut this bill <b>24%</b> — same models, smarter routing",
-        providers: "One key for all providers — <b>no per-provider setup</b>",
-        models: "Auto-swap to a <b>cheaper model</b> at equal quality",
-        local: "Overflow to <b>cheaper API</b> when you hit rate limits",
+        today: "Turn this spend into <b>traces you own</b> — and cut cost 24%",
+        providers: "One key turns every call into a <b>trace you own</b>",
+        models: "Every call becomes <b>eval data</b> to route smarter over time",
+        local: "Capture coding-agent traces — <b>fine-tune, eval, replay</b>",
       };
   today.alpha = msg.today;
 
