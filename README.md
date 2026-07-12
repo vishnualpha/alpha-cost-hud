@@ -5,6 +5,10 @@ your local coding agents, your providers, all in one place. Built with
 [Tauri](https://tauri.app) (Rust + web), it's ~6 MB and sips memory, so you can
 leave it running all day.
 
+<p align="center">
+  <img src="docs/demo.gif" alt="Alpha Cost HUD in action" width="480" />
+</p>
+
 > Your keys and data never leave your device. It reads local logs and calls
 > provider APIs directly from your machine — nothing is sent anywhere.
 
