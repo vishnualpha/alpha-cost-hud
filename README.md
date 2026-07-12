@@ -34,7 +34,7 @@ A compact carousel that auto-advances through:
 | OpenRouter | `GET /api/v1/credits` | any API key |
 | OpenAI | `GET /v1/organization/costs` | **admin** key (`sk-admin-…`) |
 | Anthropic | `GET /v1/organizations/cost_report` | **admin** key (`sk-ant-admin-…`) |
-| Alpha gateway | `GET /v1/metrics/fleet` | account login |
+| Alpha | `GET /v1/metrics/fleet` | account login |
 
 **Why some providers need an admin key:** a normal API key lets you *make* calls
 but can't *read* your past spend — that's the provider's own limitation, not
@@ -83,11 +83,18 @@ npm run tauri build    # produce a release build + installer
 
 ## About Alpha
 
-Alpha ([thealpha.ai](https://thealpha.ai)) is an AI gateway that routes your LLM
-traffic through one endpoint — turning every request into a **trace you own**
-(the dataset behind evals, fine-tuning, and cheaper routing) while cutting cost
-as a byproduct. This HUD works fully standalone; connecting Alpha adds realized
-savings and a fleet view.
+Alpha ([thealpha.ai](https://thealpha.ai)) is the **agent operating layer** —
+one layer between your agents and every model. It gives you cost control
+(per-agent budgets, spend that doesn't run 3–4× over forecast), reliability
+visibility (end-to-end run tracing — cost, latency, tokens, failures), and
+**intelligence ownership**: the traces, memory, and fine-tuning your agents
+generate stay in *your* workspace. Priced by agents, not seats. Always BYOK.
+
+> **Ownership is the alpha.**
+
+This HUD is a free, standalone companion — it works with zero setup on your local
+data. Connecting Alpha turns every request into a trace you own and adds realized
+savings plus a per-agent fleet view.
 
 ## License
 
