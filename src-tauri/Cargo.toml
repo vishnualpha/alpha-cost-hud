@@ -23,5 +23,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
+# macOS: turn the window into a non-activating NSPanel so clicking the HUD never
+# steals focus from the user's app (a true heads-up overlay). Tauri has no
+# built-in for this — `focusable: false` does NOT prevent app activation.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]

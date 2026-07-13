@@ -7,6 +7,69 @@ use tauri::{
     Manager, WebviewWindow,
 };
 
+#[cfg(target_os = "macos")]
+use tauri_nspanel::{
+    tauri_panel, CollectionBehavior, PanelLevel, StyleMask, WebviewWindowExt,
+};
+
+// A real macOS NSPanel subclass. `can_become_key_window: false` means the panel
+// never takes key status, so clicking it can't pull focus. (If the HUD ever
+// needs text input, flip this to true — the nonactivating mask still keeps the
+// user's app frontmost.)
+#[cfg(target_os = "macos")]
+tauri_panel! {
+    panel!(HudPanel {
+        config: {
+            can_become_key_window: false,
+            can_become_main_window: false,
+            is_floating_panel: true,
+            hides_on_deactivate: false
+        }
+    })
+}
+
+/// Make the HUD a true heads-up overlay: clicking it never activates our app,
+/// so the user's editor stays frontmost. Tauri has no built-in for this —
+/// `focusable: false` only skips *initial* focus, it does not prevent activation.
+#[cfg(target_os = "macos")]
+fn make_hud_nonactivating(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let window = app
+        .get_webview_window("hud")
+        .ok_or("hud window missing")?;
+    let panel = window.to_panel::<HudPanel>()?;
+
+    panel.set_level(PanelLevel::Floating.value());
+
+    // NOTE: `.borderless()` ASSIGNS the mask (it doesn't OR), so it must come
+    // first or it would wipe the nonactivating bit.
+    panel.set_style_mask(StyleMask::empty().borderless().nonactivating_panel().into());
+
+    // Stay visible across Spaces and alongside a fullscreen editor; stay out of
+    // Cmd-Tab. Without these a HUD vanishes exactly when it's most useful.
+    panel.set_collection_behavior(
+        CollectionBehavior::new()
+            .can_join_all_spaces()
+            .stationary()
+            .ignores_cycle()
+            .full_screen_auxiliary()
+            .value(),
+    );
+    panel.set_becomes_key_only_if_needed(true);
+
+    // CRITICAL: AppKit only syncs the WindowServer's "prevents activation" tag
+    // during NSPanel *init*. We class-swap an already-initialized NSWindow, so
+    // the style-mask bit alone is a no-op — this private call is what actually
+    // makes clicking the HUD stop activating our app.
+    unsafe {
+        use objc2::msg_send;
+        use objc2_app_kit::NSPanel;
+        let ptr = window.ns_window()? as *mut NSPanel;
+        let _: () = msg_send![&*ptr, _setPreventsActivation: true];
+    }
+
+    Ok(())
+}
+
 /// Toggle whether the HUD lets clicks pass through to whatever is behind it.
 /// When ignore=true the widget floats over your work without stealing clicks.
 #[tauri::command]
@@ -22,10 +85,10 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-/// Show + focus the HUD (used by the tray "Show" item and left-click).
+/// Show the HUD. Deliberately does NOT call set_focus() — this is a heads-up
+/// overlay, so surfacing it must never pull the user out of their current app.
 fn show_hud(window: &WebviewWindow) {
     let _ = window.show();
-    let _ = window.set_focus();
 }
 
 fn toggle_hud(window: &WebviewWindow) {
@@ -39,7 +102,12 @@ fn toggle_hud(window: &WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+
+    builder
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
@@ -61,12 +129,11 @@ pub fn run() {
                 .expect("valid shortcut")
                 .with_handler(|app, _shortcut, event| {
                     // Panic button: force click-through OFF so you can never get
-                    // locked out. Also shows + focuses the window.
+                    // locked out, and surface the HUD (without stealing focus).
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                         if let Some(win) = app.get_webview_window("hud") {
                             let _ = win.set_ignore_cursor_events(false);
                             let _ = win.show();
-                            let _ = win.set_focus();
                         }
                     }
                 })
@@ -87,6 +154,13 @@ pub fn run() {
             let window = app
                 .get_webview_window("hud")
                 .expect("hud window must exist");
+
+            // Convert to a non-activating NSPanel BEFORE anything shows/focuses
+            // it, so the HUD never steals focus from the user's app.
+            #[cfg(target_os = "macos")]
+            if let Err(e) = make_hud_nonactivating(app.handle()) {
+                eprintln!("non-activating panel setup failed: {e}");
+            }
 
             // The window-state plugin owns size + position after the first run.
             // But a restored position can land off-screen (e.g. a monitor that's

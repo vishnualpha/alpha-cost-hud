@@ -6,6 +6,10 @@
   html,body,#root{height:100%;background:transparent;color:var(--fg);margin:0;overflow:hidden;user-select:none;-webkit-user-select:none;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;}#root{border-radius:20px;overflow:hidden;}
 
   /* ---- bigger card ---- */
+  /* Frosted glass: slightly translucent, but with a STRONG backdrop blur so
+     whatever is behind (an editor, a browser) becomes an unreadable haze rather
+     than showing through. Transparency without the blur looks broken — the blur
+     is what makes this work. Foreground colors are untouched. */
   .widget{width:100vw;height:100vh;background:linear-gradient(160deg,rgba(22,21,17,.99),rgba(14,13,11,1));border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.55);display:flex;flex-direction:column;}
   .bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px;;cursor:grab;}
   .brand{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.03em;color:var(--muted);text-transform:uppercase;}
