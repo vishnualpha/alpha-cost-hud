@@ -20,6 +20,8 @@ export interface Settings {
   clickThrough: boolean;
   demoMode: boolean;
   planMode: "subscription" | "api";
+  /** Daily spend budget in USD. 0 = not set (no budget tracking). */
+  dailyBudget: number;
   windowSize: "24h" | "7d";
 }
 
@@ -30,6 +32,7 @@ const DEFAULTS: Settings = {
   clickThrough: false,
   demoMode: false,
   planMode: "subscription",
+  dailyBudget: 0,
   windowSize: "24h",
 };
 

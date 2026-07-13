@@ -5,7 +5,7 @@ import { open as openUrl } from "@tauri-apps/plugin-shell";
 import type { PollState } from "../usePolling";
 import type { ProviderResult } from "../providers/types";
 import type { LocalAgents, PlanMode, TimeRange } from "../localAgents";
-import { agentWindow, RANGE_LABEL } from "../localAgents";
+import { agentWindow, budgetStatus, RANGE_LABEL } from "../localAgents";
 import { useCountUp } from "../useCountUp";
 import alphaLogo from "../assets/alpha-logo.png";
 import "../carousel.css";
@@ -86,6 +86,7 @@ interface CarouselProps {
   planMode: PlanMode;
   demo: boolean;
   gatewayUrl: string; // the connected gateway base URL ("" if not connected)
+  dailyBudget: number; // 0 = not set
   onOpenConfig: () => void;
   onOpenProviders: () => void;
   onHide: () => void;
@@ -107,6 +108,26 @@ function dashboardUrl(gatewayUrl: string): string {
   }
 }
 
+// The hero's budget line. Real: computed from actual daily spend vs. the user's
+// budget. No budget set → invite them to set one (never fake a streak).
+function streakLine(local: LocalAgents | null, dailyBudget: number): string {
+  const agents = (local?.agents ?? []).filter((a) => a.available);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const b = budgetStatus(agents, dailyBudget, todayISO);
+
+  if (b.unset) {
+    return `<span style="opacity:.75">Set a daily budget in ⚙ to track streaks</span>`;
+  }
+  if (b.overToday) {
+    return `<span style="color:var(--red)">● Over budget today</span> — $${b.todaySpend.toFixed(2)} of $${dailyBudget}`;
+  }
+  const left = Math.max(0, dailyBudget - b.todaySpend);
+  if (b.streak > 0) {
+    return `🔥 ${b.streak}-day under-budget streak <span style="opacity:.7">· $${left.toFixed(2)} left today</span>`;
+  }
+  return `<span style="color:var(--green)">● On track</span> <span style="opacity:.7">· $${left.toFixed(2)} left today</span>`;
+}
+
 function buildSlides(
   poll: PollState,
   providers: ProviderResult[],
@@ -114,6 +135,7 @@ function buildSlides(
   planMode: PlanMode,
   gatewayUrl: string,
   range: TimeRange,
+  dailyBudget: number,
 ): Slide[] {
   const rangeLabel = RANGE_LABEL[range]; // "today" | "this week" | "this month"
   // ----- derived numbers (windowed) -----
@@ -138,7 +160,7 @@ function buildSlides(
       <div>
         <div class="money">${money(spendRaw)}</div>
         <div class="toks">${tk(localTokRaw)} tokens <span>${rangeLabel}</span></div>
-        <div class="streak">🔥 7-day under-budget streak</div>
+        <div class="streak">${streakLine(local, dailyBudget)}</div>
       </div>
     </div>
     <div class="spark">${SPARK.map((h, k) => {
@@ -329,7 +351,7 @@ function buildSlides(
   return base;
 }
 
-export function Carousel({ poll, providers, local, planMode, demo, gatewayUrl, onOpenConfig, onOpenProviders, onHide }: CarouselProps) {
+export function Carousel({ poll, providers, local, planMode, demo, gatewayUrl, dailyBudget, onOpenConfig, onOpenProviders, onHide }: CarouselProps) {
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
   const [range, setRange] = useState<TimeRange>("today");
@@ -351,7 +373,7 @@ export function Carousel({ poll, providers, local, planMode, demo, gatewayUrl, o
   const alphaTarget = connected ? dashboardUrl(gatewayUrl) : MARKETING_URL;
   const footLabel = connected ? "your dashboard ↗" : "thealpha.ai ↗";
 
-  const slides = buildSlides(poll, providers, local, planMode, gatewayUrl, range);
+  const slides = buildSlides(poll, providers, local, planMode, gatewayUrl, range, dailyBudget);
   const n = slides.length;
   const i = Math.min(idx, n - 1);
   const cur = slides[i];

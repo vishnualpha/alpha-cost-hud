@@ -12,6 +12,7 @@ interface ConfigScreenProps {
   onSave: (settings: Settings, apiKey: string) => Promise<void>;
   onToggleDemo: (on: boolean) => void;
   onSetPlan: (plan: Settings["planMode"]) => void;
+  onSetBudget: (budget: number) => void;
   onDisconnect: () => void;
   onCancel?: () => void;
 }
@@ -24,6 +25,7 @@ export function ConfigScreen({
   onSave,
   onToggleDemo,
   onSetPlan,
+  onSetBudget,
   onDisconnect,
   onCancel,
 }: ConfigScreenProps) {
@@ -141,6 +143,7 @@ export function ConfigScreen({
           {error && <span className="hint err">{error}</span>}
 
           <PlanRow settings={settings} onSetPlan={onSetPlan} />
+          <BudgetRow settings={settings} onSetBudget={onSetBudget} />
           <DemoRow settings={settings} onToggleDemo={onToggleDemo} />
 
           <div className="config-actions">
@@ -179,6 +182,31 @@ export function ConfigScreen({
         </div>
       )}
     </div>
+  );
+}
+
+function BudgetRow({
+  settings,
+  onSetBudget,
+}: {
+  settings: Settings;
+  onSetBudget: (b: number) => void;
+}) {
+  return (
+    <label>
+      Daily budget (USD)
+      <input
+        type="number"
+        min="0"
+        step="1"
+        placeholder="e.g. 20 — leave empty for none"
+        value={settings.dailyBudget || ""}
+        onChange={(e) => onSetBudget(Math.max(0, Number(e.target.value) || 0))}
+      />
+      <span className="hint">
+        Tracks a real under-budget streak from your actual daily spend.
+      </span>
+    </label>
   );
 }
 

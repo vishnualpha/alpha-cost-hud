@@ -11,6 +11,7 @@ interface HudProps {
   clickThrough: boolean;
   demo: boolean;
   gatewayUrl: string;
+  dailyBudget: number;
   onOpenConfig: () => void;
   onOpenProviders: () => void;
   onHide: () => void;
@@ -25,6 +26,7 @@ export function Hud(p: HudProps) {
       planMode={p.planMode}
       demo={p.demo}
       gatewayUrl={p.gatewayUrl}
+      dailyBudget={p.dailyBudget}
       onOpenConfig={p.onOpenConfig}
       onOpenProviders={p.onOpenProviders}
       onHide={p.onHide}

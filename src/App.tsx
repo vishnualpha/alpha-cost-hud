@@ -100,6 +100,16 @@ export function App() {
     [settings],
   );
 
+  const setBudget = useCallback(
+    async (budget: number) => {
+      if (!settings) return;
+      const next = { ...settings, dailyBudget: budget };
+      await saveSettings(next);
+      setSettings(next);
+    },
+    [settings],
+  );
+
   const disconnect = useCallback(async () => {
     if (!settings) return;
     // Clear the gateway connection: key from keychain, URL/workspace from store.
@@ -123,6 +133,7 @@ export function App() {
         onSave={handleSave}
         onToggleDemo={toggleDemo}
         onSetPlan={setPlan}
+        onSetBudget={setBudget}
         onDisconnect={disconnect}
         onCancel={() => setShowConfig(false)}
       />
@@ -149,6 +160,7 @@ export function App() {
       clickThrough={settings.clickThrough}
       demo={demo}
       gatewayUrl={config?.baseUrl ?? ""}
+      dailyBudget={settings.dailyBudget}
       onOpenConfig={() => setShowConfig(true)}
       onOpenProviders={() => setShowProviders(true)}
       onHide={() => getCurrentWindow().hide()}
