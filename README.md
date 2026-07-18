@@ -53,6 +53,21 @@ zero-setup sources are your **local agents**, which log every request to disk.
 
 This is open source specifically so you can verify all of the above.
 
+## Pricing
+
+Local coding agents (Claude Code, Codex) on a subscription pay a flat fee, so
+the HUD computes **API-equivalent value** — your token usage priced at
+pay-as-you-go rates. Those per-model rates live in
+[`src-tauri/pricing.json`](src-tauri/pricing.json), matched by model-ID prefix.
+
+- **New model or price change?** Edit `pricing.json` and open a PR — no Rust
+  needed. More-specific prefixes (`gpt-4o-mini`) must come before less-specific
+  ones (`gpt-4o`); the first matching rule wins.
+- **Override locally without rebuilding:** drop a `pricing.json` with the same
+  shape at `~/.config/alpha-cost-hud/pricing.json`. It fully replaces the
+  bundled table on next launch. A malformed file is ignored (bundled defaults
+  win), so a bad edit can't zero out your costs.
+
 ## Install
 
 Grab the installer for your platform from

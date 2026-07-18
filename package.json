@@ -1,7 +1,7 @@
 {
   "name": "alpha-cost-hud",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.5",
   "type": "module",
   "description": "Always-on-top desktop HUD for live LLM fleet costs — powered by Alpha AI Gateway",
   "scripts": {

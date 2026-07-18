@@ -81,6 +81,24 @@ export const MOCK_LOCAL: LocalAgents = {
         { day: "2026-07-09", tokens: 3_700_000, cost: 9.94 },
         { day: "2026-07-10", tokens: 7_540_000, cost: 19.67 },
       ],
+      reliability: {
+        conversations: 93,
+        avg_retry_depth: 6.8,
+        max_retry_depth: 135,
+        high_friction: 15,
+        stabilization_rate: 0.839,
+        recurring_failures: 12,
+        score: 72,
+        errors_to_fix: [
+          ["sample: connection timeout to api", 8],
+          ["sample: file not found in build dir", 5],
+        ],
+        skill_candidates: [
+          ["Sample: set up a new demo workspace", 3],
+          ["Sample: generate a weekly cost report", 2],
+        ],
+        skill_worthy_total: 6,
+      },
       note: null,
     },
     {
@@ -93,6 +111,7 @@ export const MOCK_LOCAL: LocalAgents = {
       today_cost: 4.1,
       by_model: [{ model: "gpt-5-codex", tokens: 88_000_000, cost: 412.0, calls: 1240 }],
       by_day: [],
+      reliability: null,
       note: null,
     },
   ],

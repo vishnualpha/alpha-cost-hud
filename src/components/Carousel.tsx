@@ -5,7 +5,7 @@ import { open as openUrl } from "@tauri-apps/plugin-shell";
 import type { PollState } from "../usePolling";
 import type { ProviderResult } from "../providers/types";
 import type { LocalAgents, PlanMode, TimeRange } from "../localAgents";
-import { agentWindow, budgetStatus, RANGE_LABEL } from "../localAgents";
+import { agentWindow, budgetStatus, grade, mergedReliability, RANGE_LABEL } from "../localAgents";
 import { useCountUp } from "../useCountUp";
 import alphaLogo from "../assets/alpha-logo.png";
 import "../carousel.css";
@@ -150,13 +150,23 @@ function buildSlides(
   // savings/other slides need the real total, so `spend` = stable total here.
   const spend = spendRaw;
 
+  // Real reliability grade (from skillops-style retry analysis of local agents).
+  const rel = mergedReliability(local);
+  const g = rel ? grade(rel.score) : null;
+  const ringStyle = g
+    ? `background:conic-gradient(${g.color} 0 ${g.turn}turn, rgba(255,255,255,.08) ${g.turn}turn 1turn)`
+    : "";
+  const gradeHtml = g
+    ? `<span class="grade" style="color:${g.color}">${g.letter}</span>`
+    : `<span class="grade" style="color:var(--muted);font-size:20px">—</span>`;
+
   // 1) HERO — money/toks seeded stable; count-up effect patches them live.
   const today: Slide = {
     name: `${range === "today" ? "Today" : range === "week" ? "This week" : "This month"} · all sources`,
     alpha: "Cut this bill <b>24%</b> — same models, smarter routing",
     html: `
     <div class="top">
-      <div class="ring"><span class="grade">A–</span></div>
+      <div class="ring"${ringStyle ? ` style="${ringStyle}"` : ""}>${gradeHtml}</div>
       <div>
         <div class="money">${money(spendRaw)}</div>
         <div class="toks">${tk(localTokRaw)} tokens <span>${rangeLabel}</span></div>
@@ -340,12 +350,48 @@ function buildSlides(
       };
   today.alpha = msg.today;
 
+  // IMPROVE YOUR AGENT — actionable, not a vanity score. Two things you can act
+  // on: recurring errors to fix at the root, and things you keep asking for that
+  // should become a reusable skill. (score kept as a small footnote.)
+  let reliabilitySlide: Slide | null = null;
+  if (rel && g && (rel.errors_to_fix.length || rel.skill_candidates.length)) {
+    const esc = (s: string) => s.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+    const item = (dot: string, phrase: string, n: number) =>
+      `<div class="imp-row"><span class="imp-dot" style="background:${dot}"></span><span class="imp-txt">${cap(esc(phrase))}</span><span class="imp-n">${n}×</span></div>`;
+
+    const errors = rel.errors_to_fix.map(([p, n]) => item("var(--red)", p, n)).join("");
+    // Skill-worthy = whole workflows (a task done without any skill). Show the
+    // count + the top named workflows — these ARE reusable-skill material.
+    const skillItems = rel.skill_candidates
+      .map(
+        ([title, n]) =>
+          `<div class="imp-row"><span class="imp-dot" style="background:var(--gold)"></span><span class="imp-txt">${cap(esc(title))}</span>${n > 1 ? `<span class="imp-n">${n}×</span>` : ""}</div>`,
+      )
+      .join("");
+
+    reliabilitySlide = {
+      name: "Improve your agent",
+      list: true,
+      alpha: "Alpha turns these into <b>evals & reusable skills</b>",
+      html:
+        (errors
+          ? `<div class="imp-head">Errors your agent keeps hitting <span class="imp-sub">fix the cause</span></div>${errors}`
+          : "") +
+        (skillItems
+          ? `<div class="imp-head"${errors ? ' style="margin-top:10px"' : ""}>${rel.skill_worthy_total} workflows to skill-ify <span class="imp-sub">→ done without a skill</span></div>${skillItems}`
+          : "") +
+        `<div class="imp-foot">Reliability <b style="color:${g.color}">${rel.score}/100</b> · ${rel.high_friction} high-friction of ${rel.conversations} sessions</div>`,
+    };
+  }
+
   const base: Slide[] = [
     today,
     { name: "By provider", list: true, alpha: msg.providers, html: providersHtml },
     { name: "Top models", list: true, alpha: msg.models, html: modelsHtml },
     { name: "Local agents", list: true, alpha: msg.local, html: localHtml },
   ];
+  if (reliabilitySlide) base.push(reliabilitySlide);
   if (fleetSlide) base.push(fleetSlide);
   base.push({ name: "Savings", html: savingsHtml });
   return base;

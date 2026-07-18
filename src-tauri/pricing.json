@@ -1,0 +1,29 @@
+{
+  "$comment": [
+    "Per-1M-token USD pricing for LLM models, used to value local coding-agent",
+    "token usage. Prices are matched by PREFIX in order — the first rule whose",
+    "`prefix` the model ID starts with wins. Put more-specific prefixes",
+    "(gpt-4o-mini) BEFORE less-specific ones (gpt-4o).",
+    "",
+    "To update: edit a rule below, or add a new one, and open a PR. Users can",
+    "also override locally without rebuilding by dropping a pricing.json with",
+    "this same shape into the app's config dir (see README).",
+    "",
+    "Fields per rule: prefix, input, output, cache_write, cache_read (all $/1M).",
+    "`default` is the fallback when no prefix matches (mid-tier, so unknown",
+    "models aren't silently free)."
+  ],
+  "rules": [
+    { "prefix": "claude-opus",   "input": 15.0, "output": 75.0, "cache_write": 18.75, "cache_read": 1.5 },
+    { "prefix": "claude-fable",  "input": 10.0, "output": 50.0, "cache_write": 12.5,  "cache_read": 1.0 },
+    { "prefix": "claude-mythos", "input": 10.0, "output": 50.0, "cache_write": 12.5,  "cache_read": 1.0 },
+    { "prefix": "claude-sonnet", "input": 3.0,  "output": 15.0, "cache_write": 3.75,  "cache_read": 0.3 },
+    { "prefix": "claude-haiku",  "input": 0.8,  "output": 4.0,  "cache_write": 1.0,   "cache_read": 0.08 },
+    { "prefix": "gpt-5",         "input": 1.25, "output": 10.0, "cache_write": 1.25,  "cache_read": 0.125 },
+    { "prefix": "gpt-4o-mini",   "input": 0.15, "output": 0.6,  "cache_write": 0.15,  "cache_read": 0.075 },
+    { "prefix": "gpt-4o",        "input": 2.5,  "output": 10.0, "cache_write": 2.5,   "cache_read": 1.25 },
+    { "prefix": "o1",            "input": 15.0, "output": 60.0, "cache_write": 15.0,  "cache_read": 7.5 },
+    { "prefix": "o3",            "input": 15.0, "output": 60.0, "cache_write": 15.0,  "cache_read": 7.5 }
+  ],
+  "default": { "input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3 }
+}

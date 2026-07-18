@@ -6,28 +6,74 @@
 //! but on a plan/subscription its token_count events carry no counts, so we
 //! surface it only when real data is present.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
-// Per-1M-token USD pricing (input, output, cache-write, cache-read).
+// ---- Pricing (data-driven, editable via JSON) ----
+// Prices live in pricing.json (bundled) so contributors can update them via PR
+// and users can override locally without rebuilding. See load_pricing().
+
+#[derive(Deserialize, Clone)]
+struct PriceRule {
+    prefix: String,
+    input: f64,
+    output: f64,
+    cache_write: f64,
+    cache_read: f64,
+}
+
+#[derive(Deserialize, Clone)]
+struct PriceDefault {
+    input: f64,
+    output: f64,
+    cache_write: f64,
+    cache_read: f64,
+}
+
+#[derive(Deserialize, Clone)]
+struct PriceTable {
+    rules: Vec<PriceRule>,
+    default: PriceDefault,
+}
+
+// Bundled defaults, embedded at compile time so pricing works offline.
+const BUNDLED_PRICING: &str = include_str!("../pricing.json");
+
+// Load the price table once: prefer a user override at
+// ~/.config/alpha-cost-hud/pricing.json, else fall back to the bundled table.
+// A malformed override is ignored (bundled wins) so a bad edit can't break cost.
+fn price_table() -> &'static PriceTable {
+    static TABLE: OnceLock<PriceTable> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        if let Some(dir) = home() {
+            let user = dir.join(".config/alpha-cost-hud/pricing.json");
+            if let Ok(text) = fs::read_to_string(&user) {
+                if let Ok(t) = serde_json::from_str::<PriceTable>(&text) {
+                    return t;
+                }
+            }
+        }
+        serde_json::from_str::<PriceTable>(BUNDLED_PRICING)
+            .expect("bundled pricing.json must be valid")
+    })
+}
+
+// Per-1M-token USD pricing (input, output, cache-write, cache-read), matched by
+// the first rule whose prefix the model ID starts with; else the default.
 fn pricing(model: &str) -> (f64, f64, f64, f64) {
     let m = model.trim_end_matches("[1m]");
-    match m {
-        _ if m.starts_with("claude-opus") => (15.0, 75.0, 18.75, 1.5),
-        _ if m.starts_with("claude-sonnet") => (3.0, 15.0, 3.75, 0.3),
-        _ if m.starts_with("claude-haiku") => (0.8, 4.0, 1.0, 0.08),
-        _ if m.starts_with("claude-fable") => (0.3, 1.2, 0.375, 0.03),
-        // OpenAI / Codex models (cache-read priced at the cached-input rate).
-        _ if m.starts_with("gpt-5") => (1.25, 10.0, 1.25, 0.125),
-        _ if m.starts_with("gpt-4o-mini") => (0.15, 0.6, 0.15, 0.075),
-        _ if m.starts_with("gpt-4o") => (2.5, 10.0, 2.5, 1.25),
-        _ if m.starts_with("o1") || m.starts_with("o3") => (15.0, 60.0, 15.0, 7.5),
-        // Unknown model — use a mid-tier default so cost isn't silently zero.
-        _ => (3.0, 15.0, 3.75, 0.3),
+    let table = price_table();
+    for r in &table.rules {
+        if m.starts_with(&r.prefix) {
+            return (r.input, r.output, r.cache_write, r.cache_read);
+        }
     }
+    let d = &table.default;
+    (d.input, d.output, d.cache_write, d.cache_read)
 }
 
 #[derive(Serialize, Default, Clone)]
@@ -45,6 +91,89 @@ pub struct DayUsage {
     pub cost: f64,
 }
 
+// Reliability metrics, ported from skillops's retry analysis. A "retry" is a
+// user re-prompt after the agent started (a back-and-forth); a "correction" is
+// a re-prompt containing a fix/broken/doesn't-work cue. A conversation
+// "stabilized" if it ended on the assistant with <=2 retries.
+#[derive(Serialize, Default, Clone)]
+pub struct Reliability {
+    pub conversations: u64,
+    pub avg_retry_depth: f64,
+    pub max_retry_depth: u64,
+    pub high_friction: u64,     // conversations with retryDepth >= 3
+    pub stabilization_rate: f64, // 0..1
+    pub recurring_failures: u64,
+    pub score: u8,              // 0..100 reliability score
+    // Two actionable insight lists (phrase, count across sessions):
+    // errors your agent repeatedly fails → fix the root cause;
+    // requests you repeatedly make → turn into a reusable skill.
+    pub errors_to_fix: Vec<(String, u64)>,
+    // Skill-worthy WORKFLOWS: substantial sessions (real task title, multi-turn)
+    // that used NO skill — you did it the hard way. count = repeats of that task.
+    pub skill_candidates: Vec<(String, u64)>,
+    pub skill_worthy_total: u64,
+}
+
+// A session used a skill if it invoked the Skill tool or a slash-command.
+fn uses_skill(v: &serde_json::Value) -> bool {
+    let msg = v.get("message").unwrap_or(v);
+    match msg.get("content") {
+        Some(serde_json::Value::Array(arr)) => arr.iter().any(|b| {
+            b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                && b.get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.eq_ignore_ascii_case("skill"))
+                    .unwrap_or(false)
+        }),
+        Some(serde_json::Value::String(s)) => s.contains("<command-name>"),
+        _ => false,
+    }
+}
+
+// The per-session ai-title, if this line is one.
+fn ai_title(v: &serde_json::Value) -> Option<String> {
+    if v.get("type").and_then(|t| t.as_str()) != Some("ai-title") {
+        return None;
+    }
+    v.get("aiTitle")
+        .and_then(|t| t.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+// Is a session title a real, skill-worthy TASK (vs. a trivial exchange)?
+fn is_task_title(title: &str) -> bool {
+    let t = title.to_lowercase();
+    // Skip trivial / conversational titles.
+    const TRIVIAL: &[&str] = &[
+        "single word", "confirmation", "response", "greeting", "acknowledg",
+        "question about", "clarif", "chat", "casual", "unknown", "help with a",
+    ];
+    if TRIVIAL.iter().any(|x| t.contains(x)) {
+        return false;
+    }
+    if title.split_whitespace().count() < 2 {
+        return false;
+    }
+    // Prefer titles that start with a build/task verb.
+    const VERBS: &[&str] = &[
+        "create", "build", "set up", "setup", "add", "implement", "write",
+        "configure", "make", "generate", "deploy", "refactor", "migrate", "wire",
+        "integrate", "automate", "design", "fix", "debug",
+    ];
+    VERBS.iter().any(|v| t.starts_with(v))
+}
+
+// Normalize a title for grouping repeats (lowercase, drop trailing detail).
+fn title_key(title: &str) -> String {
+    title
+        .to_lowercase()
+        .split_whitespace()
+        .take(6)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[derive(Serialize, Default)]
 pub struct AgentUsage {
     pub agent: String, // "claude-code" | "codex"
@@ -56,7 +185,63 @@ pub struct AgentUsage {
     pub today_cost: f64,
     pub by_model: Vec<ModelUsage>,
     pub by_day: Vec<DayUsage>, // sorted ascending, recent tail
+    pub reliability: Option<Reliability>,
     pub note: Option<String>,
+}
+
+const CORRECTION_CUES: &[&str] = &[
+    "fix", "handle", "correct", "update", "change", "include", "missing", "wrong",
+    "fails", "broken", "error", "doesn't work", "not working", "still broken",
+    "still failing", "didn't handle", "forgot to", "undo", "revert", "instead",
+];
+
+fn contains_correction_cue(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    CORRECTION_CUES.iter().any(|cue| lower.contains(cue))
+}
+
+// True if a sentence looks like injected instruction/config text rather than a
+// real user correction. These slip in from skill/system prompts embedded in
+// "user" turns and pollute the correction list.
+fn looks_like_instruction(s: &str) -> bool {
+    // code/config refs, path/command fragments, or sentence fragments that start
+    // mid-clause (a real correction is usually an imperative).
+    s.contains('`')
+        || s.contains('/')
+        || s.contains('_')
+        || s.contains('{')
+        || s.contains("skill")
+        || s.contains("gstack")
+        || s.contains("instruction")
+        || s.contains("prefix")
+        || s.starts_with("if ")
+        || s.starts_with("when ")
+        || s.starts_with(", ")
+        || s.starts_with("- ")
+}
+
+// Pull a few short correction phrases from a real user message.
+fn extract_corrections(text: &str) -> Vec<String> {
+    let lower = text.to_lowercase();
+    let mut out = Vec::new();
+    for sentence in lower.split(['.', '!', '?', '\n']) {
+        let s = sentence.trim();
+        // Real corrections are short & imperative; skip long or instruction-like.
+        if s.len() < 6 || s.split_whitespace().count() > 12 {
+            continue;
+        }
+        if !contains_correction_cue(s) || looks_like_instruction(s) {
+            continue;
+        }
+        let phrase: String = s.split_whitespace().take(8).collect::<Vec<_>>().join(" ");
+        if phrase.len() >= 6 {
+            out.push(phrase);
+        }
+        if out.len() >= 3 {
+            break;
+        }
+    }
+    out
 }
 
 #[derive(Serialize, Default)]
@@ -190,10 +375,335 @@ fn parse_claude(today: &str) -> AgentUsage {
     }
     agent.by_day = by_day;
 
+    // Second pass: reliability (retries/corrections/stabilization) per conversation.
+    agent.reliability = compute_reliability(&root);
+
     if agent.total_calls == 0 {
         agent.note = Some("No usage recorded yet".into());
     }
     agent
+}
+
+// Flatten a Claude Code message's `content` to plain text, DROPPING tool_result
+// blocks (ported from skillops normalize.ts flattenTextContent). Returns None if
+// there's no real text (e.g. tool-result-only turns).
+fn flatten_content(content: &serde_json::Value) -> Option<String> {
+    match content {
+        serde_json::Value::String(s) => {
+            let t = s.trim();
+            (!t.is_empty()).then(|| t.to_string())
+        }
+        serde_json::Value::Array(arr) => {
+            let mut toks: Vec<String> = Vec::new();
+            for item in arr {
+                let ty = item.get("type").and_then(|t| t.as_str());
+                if ty == Some("tool_result") {
+                    continue; // tool output is not user speech
+                }
+                if let Some(s) = item.get("text").and_then(|x| x.as_str()) {
+                    let clean = sanitize_text(s);
+                    if !clean.is_empty() {
+                        toks.push(clean);
+                    }
+                }
+            }
+            let joined = toks.join(" ");
+            (!joined.trim().is_empty()).then(|| joined.trim().to_string())
+        }
+        _ => None,
+    }
+}
+
+// Strip tags/code-fences/whitespace; blank out injected context blocks.
+fn sanitize_text(text: &str) -> String {
+    let lower = text.to_lowercase();
+    if lower.contains("<ide_opened_file>")
+        || lower.contains("<environment_context>")
+        || lower.contains("<permissions instructions>")
+    {
+        return String::new();
+    }
+    // crude tag + fenced-code strip
+    let mut out = String::with_capacity(text.len());
+    let mut in_tag = false;
+    for ch in text.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+// Is this user message noise (system-injected, not an actual re-prompt)?
+// Ported from skillops isNoiseMessage.
+fn is_noise_user(text: &str) -> bool {
+    let t = text.to_lowercase();
+    if t.trim().len() < 2 {
+        return true;
+    }
+    t.contains("<ide_opened_file>")
+        || t.contains("<environment_context>")
+        || t.contains("# agents.md instructions for")
+        || t.contains("<permissions instructions>")
+        || t.contains("this may or may not be related")
+        || t.contains("request interrupted")
+        || t.contains("tool use")
+        || t.contains("tool result")
+        || t.starts_with("bash ")
+        || t.contains("[system notification")
+        || t.contains("caveat: the messages below")
+        || t.contains("<system-reminder>")
+}
+
+// Real user text from a Claude Code JSONL row, or None if it's a tool-result
+// turn or system-injected noise.
+fn user_text(v: &serde_json::Value) -> Option<String> {
+    let msg = v.get("message").unwrap_or(v);
+    if msg.get("role").and_then(|r| r.as_str()) != Some("user") {
+        return None;
+    }
+    let content = msg.get("content")?;
+    // Skip tool-result-only turns.
+    if let serde_json::Value::Array(arr) = content {
+        if !arr.is_empty()
+            && arr
+                .iter()
+                .all(|e| e.get("type").and_then(|t| t.as_str()) == Some("tool_result"))
+        {
+            return None;
+        }
+    }
+    let text = flatten_content(content)?;
+    if is_noise_user(&text) {
+        return None;
+    }
+    Some(text)
+}
+
+fn is_assistant(v: &serde_json::Value) -> bool {
+    v.get("message")
+        .unwrap_or(v)
+        .get("role")
+        .and_then(|r| r.as_str())
+        == Some("assistant")
+}
+
+// Extract REAL tool failures from a message: tool_result blocks with
+// is_error:true. Returns short, normalized error signatures (first line, capped)
+// so the same failure recurring across sessions groups together.
+fn tool_errors(v: &serde_json::Value) -> Vec<String> {
+    let msg = v.get("message").unwrap_or(v);
+    let mut out = Vec::new();
+    if let Some(serde_json::Value::Array(arr)) = msg.get("content") {
+        for b in arr {
+            if b.get("type").and_then(|t| t.as_str()) != Some("tool_result") {
+                continue;
+            }
+            if b.get("is_error").and_then(|e| e.as_bool()) != Some(true) {
+                continue;
+            }
+            let raw = match b.get("content") {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(serde_json::Value::Array(a)) => a
+                    .iter()
+                    .filter_map(|x| x.get("text").and_then(|t| t.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                _ => continue,
+            };
+            let sig = normalize_error(&raw);
+            if !sig.is_empty() {
+                out.push(sig);
+            }
+        }
+    }
+    out
+}
+
+// Turn a raw error into a stable signature: first meaningful line, strip
+// volatile bits (paths, numbers, hashes) so recurrences group.
+fn normalize_error(raw: &str) -> String {
+    // Strip the <tool_use_error> wrapper and tags first.
+    let cleaned = raw.replace("<tool_use_error>", "").replace("</tool_use_error>", "");
+    let first = cleaned
+        .lines()
+        .map(|l| l.trim())
+        .find(|l| l.len() > 3)
+        .unwrap_or("")
+        .to_lowercase();
+    // Skip non-failures and too-vague signatures.
+    if first.contains("requires approval")
+        || first.contains("user rejected")
+        || first.contains("doesn't want to proceed")
+        || first.starts_with("exit code")
+        || first.starts_with("command failed")
+    {
+        return String::new();
+    }
+    let mut sig = String::with_capacity(first.len());
+    for ch in first.chars() {
+        if ch.is_ascii_digit() {
+            continue;
+        }
+        sig.push(ch);
+    }
+    // Cap length; strip a trailing "note:..." tail.
+    let sig = sig.split(" note:").next().unwrap_or(&sig);
+    let sig: String = sig.split_whitespace().take(9).collect::<Vec<_>>().join(" ");
+    if sig.len() < 8 {
+        String::new()
+    } else {
+        sig
+    }
+}
+
+// Reliability analysis, ported from skillops. Each conversation file: retryDepth
+// = user messages after the first assistant reply; corrections = those with a
+// fix/broken cue; stabilized = ended on assistant with retryDepth <= 2.
+fn compute_reliability(root: &std::path::Path) -> Option<Reliability> {
+    let mut files = Vec::new();
+    jsonl_files(&std::path::PathBuf::from(root), 0, &mut files);
+    if files.is_empty() {
+        return None;
+    }
+
+    let mut retry_depths: Vec<u64> = Vec::new();
+    let mut stabilized_count: u64 = 0;
+    let mut correction_freq: HashMap<String, u64> = HashMap::new();
+    // Real tool failures, deduped per conversation, counted across sessions.
+    let mut error_freq: HashMap<String, u64> = HashMap::new();
+    // Skill-worthy workflows: (normalized title -> [display title, repeat count]).
+    let mut skill_titles: HashMap<String, (String, u64)> = HashMap::new();
+
+    for f in &files {
+        let Ok(file) = fs::File::open(f) else { continue };
+        // Roles in order, plus per-conversation correction set.
+        let mut roles: Vec<char> = Vec::new(); // 'u' | 'a'
+        let mut first_assistant: Option<usize> = None;
+        let mut convo_corrections: std::collections::HashSet<String> = Default::default();
+        let mut convo_errors: std::collections::HashSet<String> = Default::default();
+        let mut session_title: Option<String> = None;
+        let mut session_used_skill = false;
+
+        for line in BufReader::new(file).lines().map_while(Result::ok) {
+            if line.is_empty() {
+                continue;
+            }
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            if let Some(t) = ai_title(&v) {
+                session_title = Some(t); // last title wins (final summary)
+            }
+            if uses_skill(&v) {
+                session_used_skill = true;
+            }
+            // Real tool failures (from either role's tool_result blocks).
+            for e in tool_errors(&v) {
+                convo_errors.insert(e);
+            }
+            if is_assistant(&v) {
+                if first_assistant.is_none() {
+                    first_assistant = Some(roles.len());
+                }
+                roles.push('a');
+            } else if let Some(text) = user_text(&v) {
+                // Only count corrections from user turns AFTER the agent started.
+                if first_assistant.is_some() {
+                    for c in extract_corrections(&text) {
+                        convo_corrections.insert(c);
+                    }
+                }
+                roles.push('u');
+            }
+        }
+        for e in convo_errors {
+            *error_freq.entry(e).or_insert(0) += 1;
+        }
+
+        let Some(fa) = first_assistant else { continue };
+        // retryDepth = user turns after the first assistant reply.
+        let retry_depth = roles[fa + 1..].iter().filter(|&&r| r == 'u').count() as u64;
+        let last_is_assistant = roles.last() == Some(&'a');
+        if last_is_assistant && retry_depth <= 2 {
+            stabilized_count += 1;
+        }
+        retry_depths.push(retry_depth);
+        for c in convo_corrections {
+            *correction_freq.entry(c).or_insert(0) += 1;
+        }
+
+        // Skill-worthy = a substantial task (real title, several turns) done WITHOUT
+        // using any skill. That's the "you should make a skill for this" signal.
+        let turns = roles.len() as u64;
+        if !session_used_skill && turns >= 4 {
+            if let Some(title) = session_title {
+                if is_task_title(&title) {
+                    let key = title_key(&title);
+                    let e = skill_titles.entry(key).or_insert((title.clone(), 0));
+                    e.1 += 1;
+                }
+            }
+        }
+    }
+
+    let total = retry_depths.len() as u64;
+    if total == 0 {
+        return None;
+    }
+    let sum: u64 = retry_depths.iter().sum();
+    let avg = sum as f64 / total as f64;
+    let max = *retry_depths.iter().max().unwrap_or(&0);
+    let high_friction = retry_depths.iter().filter(|&&d| d >= 3).count() as u64;
+    let stabilization_rate = stabilized_count as f64 / total as f64;
+    let recurring = correction_freq.values().filter(|&&c| c >= 2).count() as u64;
+    let failure_recurrence_rate = if correction_freq.is_empty() {
+        0.0
+    } else {
+        recurring as f64 / correction_freq.len() as f64
+    };
+
+    // Compounding score (skillops baseline formula): retry (100=zero retries,
+    // 0=5+ avg), failure-recurrence (100=none), stabilization (direct %).
+    let retry_component = (100.0 - avg * 20.0).clamp(0.0, 100.0);
+    let recurrence_component = ((1.0 - failure_recurrence_rate) * 100.0).clamp(0.0, 100.0);
+    let stabilization_component = (stabilization_rate * 100.0).clamp(0.0, 100.0);
+    let score = (retry_component * 0.4 + recurrence_component * 0.3 + stabilization_component * 0.3)
+        .round() as u8;
+
+    // errors_to_fix = REAL tool failures (is_error:true) recurring across >=2
+    // sessions. skill_candidates = whole skill-worthy WORKFLOWS (a real task done
+    // without any skill), sorted by repeats then recency of collection.
+    let mut errors: Vec<(String, u64)> = error_freq
+        .into_iter()
+        .filter(|(_, c)| *c >= 2)
+        .collect();
+    let skill_worthy_total = skill_titles.len() as u64;
+    let mut skills: Vec<(String, u64)> = skill_titles.into_values().collect();
+    // Recurring tasks (count>1) first, then the rest; cap the count for display.
+    skills.sort_by(|a, b| b.1.cmp(&a.1));
+    errors.sort_by(|a, b| b.1.cmp(&a.1));
+    errors.truncate(3);
+    skills.truncate(3);
+
+    Some(Reliability {
+        conversations: total,
+        avg_retry_depth: (avg * 100.0).round() / 100.0,
+        max_retry_depth: max,
+        high_friction,
+        stabilization_rate: (stabilization_rate * 1000.0).round() / 1000.0,
+        recurring_failures: recurring,
+        score,
+        errors_to_fix: errors,
+        skill_candidates: {
+            skills.truncate(3);
+            skills
+        },
+        skill_worthy_total,
+    })
 }
 
 fn parse_codex(today: &str) -> AgentUsage {

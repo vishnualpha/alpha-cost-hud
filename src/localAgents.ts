@@ -16,6 +16,19 @@ export interface DayUsage {
   tokens: number;
   cost: number;
 }
+export interface Reliability {
+  conversations: number;
+  avg_retry_depth: number;
+  max_retry_depth: number;
+  high_friction: number;
+  stabilization_rate: number; // 0..1
+  recurring_failures: number;
+  score: number; // 0..100
+  errors_to_fix: [string, number][];
+  skill_candidates: [string, number][]; // [session title, repeat count]
+  skill_worthy_total: number;
+}
+
 export interface AgentUsage {
   agent: string; // "claude-code" | "codex"
   available: boolean;
@@ -26,7 +39,51 @@ export interface AgentUsage {
   today_cost: number;
   by_model: ModelUsage[];
   by_day: DayUsage[];
+  reliability: Reliability | null;
   note: string | null;
+}
+
+// A letter grade from the 0-100 reliability score, with a ring color + fill.
+export function grade(score: number): { letter: string; color: string; turn: number } {
+  const turn = Math.max(0, Math.min(1, score / 100));
+  const color = score >= 70 ? "#3ddc84" : score >= 40 ? "#e6b450" : "#ff5c72";
+  const letter =
+    score >= 93 ? "A" :
+    score >= 90 ? "A–" :
+    score >= 87 ? "B+" :
+    score >= 83 ? "B" :
+    score >= 80 ? "B–" :
+    score >= 77 ? "C+" :
+    score >= 73 ? "C" :
+    score >= 70 ? "C–" :
+    score >= 60 ? "D" : "F";
+  return { letter, color, turn };
+}
+
+// Merge reliability across all local agents into one view (weighted by
+// conversation count for the score/rates).
+export function mergedReliability(local: LocalAgents | null): Reliability | null {
+  const rs = (local?.agents ?? []).map((a) => a.reliability).filter((r): r is Reliability => !!r && r.conversations > 0);
+  if (rs.length === 0) return null;
+  const conv = rs.reduce((s, r) => s + r.conversations, 0);
+  const w = (pick: (r: Reliability) => number) => rs.reduce((s, r) => s + pick(r) * r.conversations, 0) / conv;
+  const mergeList = (pick: (r: Reliability) => [string, number][]) => {
+    const m = new Map<string, number>();
+    for (const r of rs) for (const [k, v] of pick(r)) m.set(k, (m.get(k) ?? 0) + v);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3) as [string, number][];
+  };
+  return {
+    conversations: conv,
+    avg_retry_depth: Math.round(w((r) => r.avg_retry_depth) * 100) / 100,
+    max_retry_depth: Math.max(...rs.map((r) => r.max_retry_depth)),
+    high_friction: rs.reduce((s, r) => s + r.high_friction, 0),
+    stabilization_rate: Math.round(w((r) => r.stabilization_rate) * 1000) / 1000,
+    recurring_failures: rs.reduce((s, r) => s + r.recurring_failures, 0),
+    score: Math.round(w((r) => r.score)),
+    errors_to_fix: mergeList((r) => r.errors_to_fix),
+    skill_candidates: mergeList((r) => r.skill_candidates),
+    skill_worthy_total: rs.reduce((s, r) => s + r.skill_worthy_total, 0),
+  };
 }
 export interface LocalAgents {
   agents: AgentUsage[];

@@ -146,3 +146,14 @@
 .range button { flex:1; max-width:90px; font-size:11px; font-weight:600; padding:4px 0; border:none; border-radius:7px; background:rgba(255,255,255,.05); color:var(--muted); cursor:pointer; transition:.15s; }
 .range button:hover { background:rgba(255,255,255,.1); color:var(--fg); }
 .range button.on { background:var(--gold); color:#0e0d0b; }
+
+
+/* improve-your-agent slide */
+.imp-head { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--gold); font-weight:700; margin:2px 0 8px; display:flex; justify-content:space-between; align-items:baseline; }
+.imp-sub { color:var(--muted); font-weight:500; letter-spacing:0; text-transform:none; }
+.imp-row { display:flex; align-items:center; gap:9px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.04); }
+.imp-dot { width:6px; height:6px; border-radius:50%; flex:none; }
+.imp-txt { flex:1; font-size:12px; color:var(--fg); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.imp-n { font-size:11px; font-weight:700; color:var(--muted); flex:none; }
+.imp-foot { font-size:10px; color:var(--muted); margin-top:10px; padding-top:8px; border-top:1px solid var(--border); }
+.imp-foot b { font-weight:700; }

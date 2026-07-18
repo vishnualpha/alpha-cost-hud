@@ -1,6 +1,6 @@
 [package]
 name = "alpha-cost-hud"
-version = "0.1.0"
+version = "0.1.5"
 description = "Always-on-top LLM fleet cost HUD"
 authors = ["Alpha"]
 edition = "2021"
